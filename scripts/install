@@ -9,7 +9,10 @@ source /usr/share/yunohost/helpers
 ynh_script_progression "Adding Zammad repository..."
 
 # Install prerequisites for the repo
-ynh_apt_install_dependencies curl apt-transport-https gnupg libimlib2
+# Using plain apt-get — we do NOT use ynh_apt_install_dependencies here because
+# that helper creates a fake dependency package tied to the system_user resource
+# which we intentionally removed (Zammad's own package manages its user/dirs).
+apt-get install -y --no-install-recommends curl apt-transport-https gnupg libimlib2
 
 # Detect Debian version number (e.g. 12 for bookworm) — packager.io uses numbers, not codenames
 debian_version=$(lsb_release -sr | cut -d. -f1)

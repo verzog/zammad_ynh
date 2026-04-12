@@ -5,7 +5,7 @@ name = "Zammad"
 description.en = "Customer support and helpdesk ticketing system"
 description.fr = "Système de support client et gestion de tickets"
 
-version = "6.4.1~ynh1"
+version = "7.0.1~ynh1"
 
 maintainers = []
 
@@ -49,16 +49,10 @@ ram.runtime = "512M"
 
 [resources]
 
-    [resources.system_user]
-    allow_email = false
-
-    [resources.install_dir]
-    dir = "/opt/zammad"
-    owner = "zammad:zammad"
-
-    [resources.data_dir]
-    dir = "/var/lib/zammad"
-    owner = "zammad:zammad"
+    # No system_user, install_dir, or data_dir resources — Zammad's own Debian
+    # package creates the 'zammad' system user, /opt/zammad, and /var/lib/zammad
+    # with the exact settings it needs. Pre-creating them via YunoHost conflicts
+    # with the package's postinst and causes 'can't cd to /opt/zammad' failures.
 
     [resources.permissions]
     main.url = "/"
