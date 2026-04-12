@@ -18,9 +18,9 @@ done
 #=================================================
 # REMOVE PACKAGE
 #=================================================
-ynh_script_progression "Removing Zammad package..."
+ynh_script_progression "Removing Zammad and Elasticsearch packages..."
 
-DEBIAN_FRONTEND=noninteractive apt-get purge -y zammad 2>&1 || true
+DEBIAN_FRONTEND=noninteractive apt-get purge -y zammad elasticsearch 2>&1 || true
 apt-get autoremove -y 2>/dev/null || true
 
 #=================================================

@@ -36,12 +36,32 @@ echo "deb [signed-by=/etc/apt/keyrings/elasticsearch.gpg] https://artifacts.elas
 apt-get update -qq
 
 #=================================================
+# INSTALL ELASTICSEARCH FIRST
+#=================================================
+ynh_script_progression "Installing Elasticsearch..."
+
+# Install Elasticsearch before Zammad so Zammad's package finds the dependency
+# already satisfied and skips its own Elasticsearch setup steps.
+DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends elasticsearch 2>&1
+
+# Start and enable Elasticsearch
+systemctl enable elasticsearch --quiet
+systemctl start elasticsearch
+
+# Give Elasticsearch a moment to start
+sleep 5
+
+#=================================================
 # INSTALL ZAMMAD PACKAGE
 #=================================================
 ynh_script_progression "Installing Zammad (this may take several minutes)..."
 
+# Pre-create a dummy nginx config so Zammad's postinst doesn't generate one
+# that YunoHost would detect as a conflicting app on the domain.
+mkdir -p /etc/nginx/conf.d
+touch /etc/nginx/conf.d/zammad.conf
+
 # Zammad's package installs PostgreSQL, Redis, and configures them automatically.
-# We skip its built-in nginx setup — YunoHost manages NGINX.
 DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends zammad 2>&1
 
 #=================================================
@@ -49,14 +69,12 @@ DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends zammad
 #=================================================
 ynh_script_progression "Configuring NGINX..."
 
-# Zammad's package drops a config in /etc/nginx/conf.d/zammad.conf — remove it
-# so YunoHost's NGINX takes over.
-if [ -f /etc/nginx/conf.d/zammad.conf ]; then
-    mv /etc/nginx/conf.d/zammad.conf /etc/nginx/conf.d/zammad.conf.disabled
-fi
-if [ -f /etc/nginx/sites-enabled/zammad.conf ]; then
-    rm -f /etc/nginx/sites-enabled/zammad.conf
-fi
+# Remove whatever Zammad's postinst wrote — YunoHost manages NGINX instead.
+rm -f /etc/nginx/conf.d/zammad.conf
+rm -f /etc/nginx/sites-enabled/zammad.conf
+rm -f /etc/nginx/sites-available/zammad.conf
+# Also remove any domain-specific conf dirs Zammad may have created
+rm -rf /etc/nginx/conf.d/zammad.*.d/
 
 # Deploy YunoHost NGINX config
 ynh_config_add_nginx
