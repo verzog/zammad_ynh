@@ -1,0 +1,59 @@
+#!/bin/bash
+
+source _common.sh
+source /usr/share/yunohost/helpers
+
+#=================================================
+# STOP SERVICES BEFORE UPGRADE
+#=================================================
+ynh_script_progression "Stopping Zammad services for upgrade..."
+
+for svc in zammad-websocket zammad-worker zammad-web; do
+    systemctl stop "$svc" 2>/dev/null || true
+done
+
+#=================================================
+# UPGRADE PACKAGE
+#=================================================
+ynh_script_progression "Upgrading Zammad package..."
+
+apt-get update -qq
+DEBIAN_FRONTEND=noninteractive apt-get install -y --only-upgrade zammad 2>&1
+
+#=================================================
+# RE-APPLY NGINX CONFIG (in case it changed)
+#=================================================
+ynh_script_progression "Updating NGINX configuration..."
+
+# Ensure Zammad's own nginx config remains disabled
+if [ -f /etc/nginx/conf.d/zammad.conf ]; then
+    mv /etc/nginx/conf.d/zammad.conf /etc/nginx/conf.d/zammad.conf.disabled
+fi
+
+ynh_config_add_nginx
+
+#=================================================
+# RE-APPLY FAIL2BAN & LOGROTATE
+#=================================================
+ynh_config_add_fail2ban --logpath="/var/log/zammad/production.log" \
+    --failregex="Failed login for .* from <HOST>"
+ynh_config_add_logrotate "/var/log/zammad"
+
+#=================================================
+# START SERVICES
+#=================================================
+ynh_script_progression "Restarting Zammad services..."
+
+for svc in zammad zammad-web zammad-worker zammad-websocket; do
+    if systemctl list-units --full --all | grep -q "${svc}.service"; then
+        systemctl restart "$svc" 2>/dev/null || true
+    fi
+done
+
+# Brief wait then verify web is up
+sleep 10
+if ! curl -s -o /dev/null "http://127.0.0.1:$port"; then
+    ynh_print_warn "Zammad web server may not be fully up yet. Check: journalctl -u zammad-web"
+fi
+
+ynh_script_progression "Upgrade of Zammad complete!"

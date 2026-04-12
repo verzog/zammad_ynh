@@ -1,0 +1,51 @@
+#!/bin/bash
+
+source _common.sh
+source /usr/share/yunohost/helpers
+
+ynh_script_progression "Declaring files to backup..."
+
+#=================================================
+# NGINX AND APP CONFIGURATION
+#=================================================
+ynh_backup "/etc/nginx/conf.d/$app.conf"
+ynh_backup "/etc/zammad"
+
+#=================================================
+# DATA DIRECTORY (attachments, uploads)
+#=================================================
+ynh_backup "$data_dir"
+
+#=================================================
+# DATABASE
+#=================================================
+ynh_script_progression "Backing up Zammad database..."
+
+# Zammad's own backup script handles the PostgreSQL dump and attachments
+# We use it for reliability, then include the result in the backup archive.
+mkdir -p "/tmp/zammad_backup"
+
+if [ -f /opt/zammad/contrib/backup/zammad_backup.sh ]; then
+    # Use Zammad's official backup script
+    BACKUP_DIR="/tmp/zammad_backup" \
+    BACKUP_FILE_SUFFIX="" \
+        sudo -u zammad bash /opt/zammad/contrib/backup/zammad_backup.sh 2>&1 || true
+fi
+
+# Fallback: raw PostgreSQL dump
+if ! ls /tmp/zammad_backup/*.sql.gz 1>/dev/null 2>&1; then
+    ynh_print_warn "Zammad backup script not found or failed — falling back to pg_dump."
+    zammad_db=$(sudo -u zammad bash -c "cd /opt/zammad && bundle exec rails runner 'puts ActiveRecord::Base.connection_config[:database]'" 2>/dev/null || echo "zammad_production")
+    sudo -u postgres pg_dump "$zammad_db" | gzip > "/tmp/zammad_backup/zammad_db.sql.gz"
+fi
+
+ynh_backup "/tmp/zammad_backup"
+
+#=================================================
+# LOGROTATE AND FAIL2BAN
+#=================================================
+ynh_backup "/etc/logrotate.d/$app"
+ynh_backup "/etc/fail2ban/jail.d/$app.conf" 2>/dev/null || true
+ynh_backup "/etc/fail2ban/filter.d/$app.conf" 2>/dev/null || true
+
+ynh_script_progression "Backup complete!"

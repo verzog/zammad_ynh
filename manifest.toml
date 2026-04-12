@@ -1,0 +1,69 @@
+packaging_format = 2
+
+id = "zammad"
+name = "Zammad"
+description.en = "Customer support and helpdesk ticketing system"
+description.fr = "Système de support client et gestion de tickets"
+
+version = "6.4.1~ynh1"
+
+maintainers = []
+
+[upstream]
+license = "AGPL-3.0"
+website = "https://zammad.org"
+demo = "https://zammad.org/demo"
+documentation = "https://docs.zammad.org"
+code = "https://github.com/zammad/zammad"
+cpe = "cpe:2.3:a:zammad:zammad"
+
+[integration]
+yunohost = ">= 11.2"
+helpers_version = "2.1"
+architectures = ["amd64"]
+multi_instance = false
+ldap = true
+sso = false
+disk = "3G"
+ram.build = "1024M"
+ram.runtime = "512M"
+
+[install]
+
+    [install.domain]
+    type = "domain"
+
+    [install.init_main_permission]
+    help.en = "Who can access Zammad. Choose 'visitors' for a public helpdesk."
+    type = "group"
+    default = "visitors"
+
+    [install.admin]
+    type = "user"
+
+    [install.language]
+    ask.en = "Choose the application language"
+    type = "select"
+    choices = ["en", "de", "fr", "es", "it", "nl", "pl", "pt", "ru", "zh"]
+    default = "en"
+
+[resources]
+
+    [resources.system_user]
+    allow_email = false
+
+    [resources.install_dir]
+    dir = "/opt/zammad"
+    owner = "zammad:zammad"
+
+    [resources.data_dir]
+    dir = "/var/lib/zammad"
+    owner = "zammad:zammad"
+
+    [resources.permissions]
+    main.url = "/"
+    main.auth_header = false
+
+    [resources.ports]
+    main.default = 3000
+    websocket.default = 6042

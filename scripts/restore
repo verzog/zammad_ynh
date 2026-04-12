@@ -1,0 +1,99 @@
+#!/bin/bash
+
+source _common.sh
+source /usr/share/yunohost/helpers
+
+#=================================================
+# RESTORE DEPENDENCIES & APP
+#=================================================
+ynh_script_progression "Reinstalling Zammad..."
+
+# Re-add the repo and install (same steps as install script)
+debian_version=$(lsb_release -sc)
+
+ynh_apt_install_dependencies curl apt-transport-https gnupg libimlib2
+
+curl -fsSL "https://dl.packager.io/srv/deb/zammad/zammad/key" \
+    | gpg --dearmor \
+    | tee /usr/share/keyrings/zammad.gpg > /dev/null
+chmod 644 /usr/share/keyrings/zammad.gpg
+
+echo "deb [signed-by=/usr/share/keyrings/zammad.gpg] https://dl.packager.io/srv/deb/zammad/zammad/stable/debian ${debian_version} main" \
+    > /etc/apt/sources.list.d/zammad.list
+
+apt-get update -qq
+DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends zammad 2>&1
+
+# Stop services before restoring data
+for svc in zammad-websocket zammad-worker zammad-web zammad; do
+    systemctl stop "$svc" 2>/dev/null || true
+done
+
+#=================================================
+# RESTORE DATABASE
+#=================================================
+ynh_script_progression "Restoring database..."
+
+# Determine the Zammad database name
+zammad_db="zammad_production"
+
+# Use Zammad's own restore script if available
+backup_dir="$(ls -d "${YNH_APP_BACKUP_DIR}/tmp/zammad_backup" 2>/dev/null || echo "")"
+
+if [ -n "$backup_dir" ] && [ -f /opt/zammad/contrib/backup/zammad_restore.sh ]; then
+    BACKUP_DIR="$backup_dir" \
+        sudo -u zammad bash /opt/zammad/contrib/backup/zammad_restore.sh 2>&1 || true
+elif [ -n "$backup_dir" ] && ls "${backup_dir}"/*.sql.gz 1>/dev/null 2>&1; then
+    # Fallback: restore from raw dump
+    dump_file=$(ls "${backup_dir}"/*.sql.gz | head -1)
+    sudo -u postgres psql -c "DROP DATABASE IF EXISTS ${zammad_db};"
+    sudo -u postgres psql -c "CREATE DATABASE ${zammad_db} OWNER zammad;"
+    zcat "$dump_file" | sudo -u postgres psql "$zammad_db"
+fi
+
+#=================================================
+# RESTORE DATA DIRECTORY
+#=================================================
+ynh_script_progression "Restoring data directory..."
+ynh_restore_file --origin_path="$data_dir"
+
+#=================================================
+# RESTORE CONFIGURATION
+#=================================================
+ynh_script_progression "Restoring application configuration..."
+ynh_restore_file --origin_path="/etc/zammad"
+
+#=================================================
+# RESTORE NGINX CONFIG
+#=================================================
+ynh_script_progression "Restoring NGINX configuration..."
+
+# Ensure Zammad's own nginx config is still disabled
+if [ -f /etc/nginx/conf.d/zammad.conf ]; then
+    mv /etc/nginx/conf.d/zammad.conf /etc/nginx/conf.d/zammad.conf.disabled
+fi
+
+ynh_restore_file --origin_path="/etc/nginx/conf.d/$app.conf"
+ynh_systemctl --service=nginx --action=reload
+
+#=================================================
+# RESTORE LOGROTATE & FAIL2BAN
+#=================================================
+ynh_restore_file --origin_path="/etc/logrotate.d/$app"
+ynh_restore_file --origin_path="/etc/fail2ban/jail.d/$app.conf" --not_mandatory
+ynh_restore_file --origin_path="/etc/fail2ban/filter.d/$app.conf" --not_mandatory
+systemctl reload fail2ban 2>/dev/null || true
+
+#=================================================
+# START SERVICES
+#=================================================
+ynh_script_progression "Starting Zammad services..."
+
+for svc in zammad zammad-web zammad-worker zammad-websocket; do
+    if systemctl list-units --full --all | grep -q "${svc}.service"; then
+        systemctl enable "$svc" --quiet 2>/dev/null || true
+        systemctl start "$svc" 2>/dev/null || true
+    fi
+done
+
+ynh_script_progression "Restoration of Zammad complete!"

@@ -1,0 +1,62 @@
+#!/bin/bash
+
+source _common.sh
+source /usr/share/yunohost/helpers
+
+#=================================================
+# STOP SERVICES
+#=================================================
+ynh_script_progression "Stopping Zammad services..."
+
+for svc in zammad-websocket zammad-worker zammad-web zammad; do
+    if systemctl list-units --full --all | grep -q "${svc}.service"; then
+        systemctl stop "$svc" 2>/dev/null || true
+        systemctl disable "$svc" --quiet 2>/dev/null || true
+    fi
+done
+
+#=================================================
+# REMOVE PACKAGE
+#=================================================
+ynh_script_progression "Removing Zammad package..."
+
+DEBIAN_FRONTEND=noninteractive apt-get purge -y zammad 2>&1 || true
+apt-get autoremove -y 2>/dev/null || true
+
+#=================================================
+# REMOVE APT REPOSITORY
+#=================================================
+ynh_script_progression "Removing Zammad repository..."
+
+rm -f /etc/apt/sources.list.d/zammad.list
+rm -f /usr/share/keyrings/zammad.gpg
+apt-get update -qq
+
+#=================================================
+# REMOVE NGINX CONFIG
+#=================================================
+ynh_script_progression "Removing NGINX configuration..."
+ynh_config_remove_nginx
+
+# Also clean up the disabled Zammad nginx config
+rm -f /etc/nginx/conf.d/zammad.conf.disabled
+rm -f /etc/nginx/conf.d/zammad.conf
+
+#=================================================
+# REMOVE FAIL2BAN & LOGROTATE
+#=================================================
+ynh_config_remove_fail2ban
+ynh_config_remove_logrotate
+
+#=================================================
+# REMOVE REMAINING FILES
+#=================================================
+ynh_script_progression "Removing remaining files..."
+
+# Zammad data and config (purge may not remove these)
+ynh_safe_rm "/opt/zammad"
+ynh_safe_rm "/var/lib/zammad"
+ynh_safe_rm "/etc/zammad"
+ynh_safe_rm "/var/log/zammad"
+
+ynh_script_progression "Zammad has been removed."

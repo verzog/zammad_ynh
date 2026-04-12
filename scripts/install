@@ -1,0 +1,169 @@
+#!/bin/bash
+
+source _common.sh
+source /usr/share/yunohost/helpers
+
+#=================================================
+# SYSTEM DEPENDENCIES & REPO
+#=================================================
+ynh_script_progression "Adding Zammad repository..."
+
+# Install prerequisites for the repo
+ynh_apt_install_dependencies curl apt-transport-https gnupg libimlib2
+
+# Detect Debian version
+debian_version=$(lsb_release -sc)
+
+# Add Zammad GPG key
+curl -fsSL "https://dl.packager.io/srv/deb/zammad/zammad/key" \
+    | gpg --dearmor \
+    | tee /usr/share/keyrings/zammad.gpg > /dev/null
+chmod 644 /usr/share/keyrings/zammad.gpg
+
+# Add Zammad apt repository
+echo "deb [signed-by=/usr/share/keyrings/zammad.gpg] https://dl.packager.io/srv/deb/zammad/zammad/stable/debian ${debian_version} main" \
+    > /etc/apt/sources.list.d/zammad.list
+
+apt-get update -qq
+
+#=================================================
+# INSTALL ZAMMAD PACKAGE
+#=================================================
+ynh_script_progression "Installing Zammad (this may take several minutes)..."
+
+# Zammad's package installs PostgreSQL, Redis, and configures them automatically.
+# We skip its built-in nginx setup — YunoHost manages NGINX.
+DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends zammad 2>&1
+
+#=================================================
+# DISABLE ZAMMAD'S OWN NGINX CONFIG
+#=================================================
+ynh_script_progression "Configuring NGINX..."
+
+# Zammad's package drops a config in /etc/nginx/conf.d/zammad.conf — remove it
+# so YunoHost's NGINX takes over.
+if [ -f /etc/nginx/conf.d/zammad.conf ]; then
+    mv /etc/nginx/conf.d/zammad.conf /etc/nginx/conf.d/zammad.conf.disabled
+fi
+if [ -f /etc/nginx/sites-enabled/zammad.conf ]; then
+    rm -f /etc/nginx/sites-enabled/zammad.conf
+fi
+
+# Deploy YunoHost NGINX config
+ynh_config_add_nginx
+
+#=================================================
+# WAIT FOR ZAMMAD TO BE READY
+#=================================================
+ynh_script_progression "Waiting for Zammad services to become available..."
+
+# Ensure all Zammad services are running
+for svc in zammad zammad-web zammad-worker zammad-websocket; do
+    if systemctl list-units --full --all | grep -q "${svc}.service"; then
+        systemctl enable "$svc" --quiet 2>/dev/null || true
+        systemctl restart "$svc" 2>/dev/null || true
+    fi
+done
+
+# Wait up to 120 seconds for the web port to respond
+timeout=120
+elapsed=0
+ynh_script_progression "Waiting for Zammad web server on port $port..."
+while ! curl -s -o /dev/null -w "%{http_code}" "http://127.0.0.1:$port" | grep -qE "^[23]"; do
+    sleep 3
+    elapsed=$((elapsed + 3))
+    if [ "$elapsed" -ge "$timeout" ]; then
+        ynh_die "Zammad did not become available within ${timeout}s. Check: journalctl -u zammad-web"
+    fi
+done
+
+#=================================================
+# INITIAL APPLICATION CONFIGURATION
+#=================================================
+ynh_script_progression "Configuring Zammad application settings..."
+
+# Set the application URL so Zammad generates correct links
+# Zammad stores this in the database — use the rails runner
+zammad_rails() {
+    sudo -u zammad bash -c "cd /opt/zammad && bundle exec rails runner \"$1\"" 2>/dev/null
+}
+
+domain_url="https://${domain}"
+zammad_rails "Setting.set('http_type', 'https'); Setting.set('fqdn', '${domain}')"
+
+# Set the interface language
+zammad_rails "Setting.set('locale_default', '${language}')"
+
+#=================================================
+# CREATE ADMIN USER
+#=================================================
+ynh_script_progression "Creating admin user..."
+
+admin_email=$(ynh_user_get_info --username="$admin" --key="mail")
+admin_password=$(ynh_string_random --length=24)
+
+# Store password in YunoHost settings so it can be retrieved later
+ynh_app_setting_set --key=admin_password --value="$admin_password"
+
+zammad_rails "
+u = User.where(login: '${admin}').first_or_initialize
+u.login      = '${admin}'
+u.firstname  = User.find_by(email: '${admin_email}')&.firstname || '${admin}'
+u.lastname   = ''
+u.email      = '${admin_email}'
+u.password   = '${admin_password}'
+u.roles      = Role.where(name: ['Admin', 'Agent'])
+u.active     = true
+u.save!
+"
+
+#=================================================
+# LDAP CONFIGURATION
+#=================================================
+ynh_script_progression "Configuring LDAP authentication..."
+
+ldap_password=$(ynh_app_setting_get --key=ldap_password 2>/dev/null || echo "")
+if [ -z "$ldap_password" ]; then
+    ldap_password=$(ynh_string_random --length=24)
+    ynh_app_setting_set --key=ldap_password --value="$ldap_password"
+fi
+
+# Create a dedicated LDAP bind user in YunoHost
+# (YunoHost LDAP is at ldap://localhost, base dc=yunohost,dc=org)
+ynh_script_progression "Configuring Zammad LDAP source..."
+
+zammad_rails "
+src = LdapSource.where(name: 'YunoHost').first_or_initialize
+src.name       = 'YunoHost'
+src.host       = 'localhost'
+src.port       = 389
+src.options    = {
+  'dc'         => 'dc=yunohost,dc=org',
+  'base'       => 'ou=users,dc=yunohost,dc=org',
+  'bind_user'  => 'cn=admin,dc=yunohost,dc=org',
+  'bind_pw'    => '$(yunohost tools adminpw --quiet 2>/dev/null || echo '')',
+  'uid'        => 'uid',
+  'firstname'  => 'givenName',
+  'lastname'   => 'sn',
+  'email'      => 'mail',
+}
+src.active     = true
+src.save!
+"
+
+#=================================================
+# FAIL2BAN
+#=================================================
+ynh_script_progression "Configuring Fail2ban..."
+ynh_config_add_fail2ban --logpath="/var/log/zammad/production.log" \
+    --failregex="Failed login for .* from <HOST>"
+
+#=================================================
+# LOGROTATE
+#=================================================
+ynh_config_add_logrotate "/var/log/zammad"
+
+#=================================================
+# FINISH
+#=================================================
+ynh_script_progression "Installation of Zammad complete!"
