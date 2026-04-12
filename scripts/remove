@@ -51,14 +51,27 @@ ynh_config_remove_fail2ban
 ynh_config_remove_logrotate
 
 #=================================================
+# DROP POSTGRESQL DATABASE
+#=================================================
+ynh_script_progression "Removing Zammad PostgreSQL database..."
+
+# Zammad's Debian package creates its own PostgreSQL user/database.
+# dpkg purge does NOT drop them — we must do it manually, or the next
+# install will find a stale database and the postinst will fail.
+sudo -u postgres dropdb   zammad 2>/dev/null || true
+sudo -u postgres dropuser zammad 2>/dev/null || true
+
+#=================================================
 # REMOVE REMAINING FILES
 #=================================================
 ynh_script_progression "Removing remaining files..."
 
-# Zammad data and config (purge may not remove these)
+# Zammad data and config (purge may not remove these if non-empty)
 ynh_safe_rm "/opt/zammad"
 ynh_safe_rm "/var/lib/zammad"
 ynh_safe_rm "/etc/zammad"
 ynh_safe_rm "/var/log/zammad"
+# Elasticsearch leftover data
+ynh_safe_rm "/var/lib/elasticsearch"
 
 ynh_script_progression "Zammad has been removed."
