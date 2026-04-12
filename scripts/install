@@ -51,13 +51,15 @@ systemctl start elasticsearch
 ynh_script_progression "Waiting for Elasticsearch to be ready..."
 es_timeout=300
 es_elapsed=0
-until curl -sf "http://localhost:9200" > /dev/null 2>&1; do
+until systemctl is-active --quiet elasticsearch; do
     sleep 5
     es_elapsed=$((es_elapsed + 5))
     if [ "$es_elapsed" -ge "$es_timeout" ]; then
-        ynh_die "Elasticsearch did not become available within ${es_timeout}s. Check: journalctl -u elasticsearch -n 50"
+        ynh_die "Elasticsearch did not become active within ${es_timeout}s. Check: journalctl -u elasticsearch -n 50"
     fi
 done
+# Give Elasticsearch a moment to finish binding its port after becoming active
+sleep 10
 
 #=================================================
 # INSTALL ZAMMAD PACKAGE
