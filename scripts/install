@@ -99,19 +99,25 @@ ynh_config_add_nginx
 
 systemctl enable zammad --quiet 2>/dev/null || true
 
-ynh_script_progression "Waiting for Zammad web server on port $port (first start runs DB migrations — allow up to 10 minutes)..."
+# zammad.service and zammad-web.service are placeholders (sleep infinity).
+# The real Puma web server runs as zammad-web-1.service (scaled instance).
+# Wait for it to become active, then poll the HTTP port.
+ynh_script_progression "Waiting for Zammad web server on port $port (DB migrations on first start — allow up to 15 minutes)..."
 
-timeout=600
+timeout=900
 elapsed=0
 while ! curl -sf -o /dev/null "http://127.0.0.1:$port/"; do
     sleep 10
     elapsed=$((elapsed + 10))
     if [ $((elapsed % 60)) -eq 0 ]; then
-        ynh_print_info "Still waiting for Zammad... ${elapsed}s elapsed. zammad.service: $(systemctl is-active zammad 2>/dev/null || echo unknown)"
-        ynh_print_info "Recent log: $(journalctl -u zammad -n 3 --no-pager 2>/dev/null | tail -1)"
+        web1_status=$(systemctl is-active zammad-web-1 2>/dev/null || echo unknown)
+        worker1_status=$(systemctl is-active zammad-worker-1 2>/dev/null || echo unknown)
+        ynh_print_info "Still waiting... ${elapsed}s elapsed. web-1: ${web1_status} worker-1: ${worker1_status}"
+        ynh_print_info "Recent log: $(journalctl -u zammad-web-1 -n 2 --no-pager 2>/dev/null | tail -1)"
     fi
     if [ "$elapsed" -ge "$timeout" ]; then
-        ynh_print_warn "Check: journalctl -u zammad -n 100 --no-pager"
+        ynh_print_warn "Check: journalctl -u zammad-web-1 -n 100 --no-pager"
+        ynh_print_warn "Check: journalctl -u zammad-worker-1 -n 100 --no-pager"
         ynh_print_warn "Check: tail -50 /var/log/zammad/production.log"
         ynh_die "Zammad did not respond on port $port after ${timeout}s."
     fi
