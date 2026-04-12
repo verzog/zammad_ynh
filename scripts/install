@@ -43,19 +43,25 @@ apt-get update -qq
 #=================================================
 ynh_script_progression "Installing Elasticsearch..."
 
-# Limit Elasticsearch JVM heap to prevent OOM during the subsequent Zammad apt install.
-# Default ES 8.x uses half of system RAM as heap; on a small VPS that leaves too little
-# for dpkg to safely extract the large Zammad package (~2 GB of files).
-mkdir -p /etc/elasticsearch/jvm.options.d
-printf -- '-Xms512m\n-Xmx512m\n' > /etc/elasticsearch/jvm.options.d/yunohost.options
-
 # Install Elasticsearch before Zammad so Zammad's package finds the dependency
 # already satisfied and skips its own Elasticsearch setup steps.
 DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends elasticsearch 2>&1
 
-# Start and enable Elasticsearch, then wait for it to be ready
+# Cap the JVM heap AFTER installation so we don't interfere with the postinst
+# security auto-configuration.  Default ES 8.x uses half of system RAM; on a
+# memory-constrained VPS that leaves too little for dpkg to extract the large
+# Zammad package (~2 GB of files).
+mkdir -p /etc/elasticsearch/jvm.options.d
+printf -- '-Xms512m\n-Xmx512m\n' > /etc/elasticsearch/jvm.options.d/yunohost.options
+
+# ES postinst explicitly says "NOT starting on installation; run daemon-reload first"
+systemctl daemon-reload
 systemctl enable elasticsearch --quiet
-systemctl start elasticsearch
+systemctl start elasticsearch || {
+    ynh_print_warn "Elasticsearch failed to start — dumping last 30 log lines:"
+    journalctl -u elasticsearch -n 30 --no-pager 2>/dev/null || true
+    ynh_die "Elasticsearch failed to start. Check: journalctl -xeu elasticsearch.service"
+}
 
 ynh_script_progression "Waiting for Elasticsearch to be ready..."
 es_timeout=300
