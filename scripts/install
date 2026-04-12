@@ -44,12 +44,20 @@ ynh_script_progression "Installing Elasticsearch..."
 # already satisfied and skips its own Elasticsearch setup steps.
 DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends elasticsearch 2>&1
 
-# Start and enable Elasticsearch
+# Start and enable Elasticsearch, then wait for it to be ready
 systemctl enable elasticsearch --quiet
 systemctl start elasticsearch
 
-# Give Elasticsearch a moment to start
-sleep 5
+ynh_script_progression "Waiting for Elasticsearch to be ready..."
+es_timeout=120
+es_elapsed=0
+until curl -sf "http://localhost:9200" > /dev/null 2>&1; do
+    sleep 5
+    es_elapsed=$((es_elapsed + 5))
+    if [ "$es_elapsed" -ge "$es_timeout" ]; then
+        ynh_die "Elasticsearch did not become available within ${es_timeout}s. Check: journalctl -u elasticsearch -n 50"
+    fi
+done
 
 #=================================================
 # INSTALL ZAMMAD PACKAGE
