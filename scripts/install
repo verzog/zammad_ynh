@@ -92,15 +92,25 @@ for svc in zammad zammad-web zammad-worker zammad-websocket; do
     fi
 done
 
-# Wait up to 120 seconds for the web port to respond
-timeout=120
+# Wait for zammad-web to reach 'active (running)' state first (DB migrations run here)
+ynh_script_progression "Waiting for Zammad web server on port $port (first start runs DB migrations, may take 3-5 minutes)..."
+timeout=360
 elapsed=0
-ynh_script_progression "Waiting for Zammad web server on port $port..."
-while ! curl -s -o /dev/null -w "%{http_code}" "http://127.0.0.1:$port" | grep -qE "^[23]"; do
-    sleep 3
-    elapsed=$((elapsed + 3))
+until systemctl is-active --quiet zammad-web 2>/dev/null; do
+    sleep 5
+    elapsed=$((elapsed + 5))
     if [ "$elapsed" -ge "$timeout" ]; then
-        ynh_die "Zammad did not become available within ${timeout}s. Check: journalctl -u zammad-web"
+        ynh_die "zammad-web service did not become active within ${timeout}s. Check: journalctl -u zammad-web -n 50"
+    fi
+done
+
+# Then wait for the HTTP port to actually respond
+elapsed=0
+while ! curl -sf -o /dev/null "http://127.0.0.1:$port/"; do
+    sleep 5
+    elapsed=$((elapsed + 5))
+    if [ "$elapsed" -ge "$timeout" ]; then
+        ynh_die "Zammad web port $port did not respond within ${timeout}s. Check: journalctl -u zammad-web -n 50"
     fi
 done
 
