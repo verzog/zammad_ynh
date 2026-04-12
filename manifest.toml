@@ -32,6 +32,7 @@ ram.runtime = "512M"
 
     [install.domain]
     type = "domain"
+    full_domain = true
 
     [install.init_main_permission]
     help.en = "Who can access Zammad. Choose 'visitors' for a public helpdesk."
