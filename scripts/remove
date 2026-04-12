@@ -30,6 +30,8 @@ ynh_script_progression "Removing Zammad repository..."
 
 rm -f /etc/apt/sources.list.d/zammad.list
 rm -f /etc/apt/keyrings/pkgr-zammad.gpg
+rm -f /etc/apt/sources.list.d/elasticsearch.list
+rm -f /etc/apt/keyrings/elasticsearch.gpg
 apt-get update -qq
 
 #=================================================

@@ -22,6 +22,14 @@ chmod 644 /etc/apt/keyrings/pkgr-zammad.gpg
 echo "deb [signed-by=/etc/apt/keyrings/pkgr-zammad.gpg] https://dl.packager.io/srv/deb/zammad/zammad/stable/debian ${debian_version} main" \
     > /etc/apt/sources.list.d/zammad.list
 
+# Add Elasticsearch repository (required by Zammad package)
+curl -fsSL "https://artifacts.elastic.co/GPG-KEY-elasticsearch" \
+    | gpg --dearmor \
+    | tee /etc/apt/keyrings/elasticsearch.gpg > /dev/null
+chmod 644 /etc/apt/keyrings/elasticsearch.gpg
+echo "deb [signed-by=/etc/apt/keyrings/elasticsearch.gpg] https://artifacts.elastic.co/packages/8.x/apt stable main" \
+    > /etc/apt/sources.list.d/elasticsearch.list
+
 apt-get update -qq
 DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends zammad 2>&1
 
