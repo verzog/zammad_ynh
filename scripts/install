@@ -43,6 +43,12 @@ apt-get update -qq
 #=================================================
 ynh_script_progression "Installing Elasticsearch..."
 
+# Limit Elasticsearch JVM heap to prevent OOM during the subsequent Zammad apt install.
+# Default ES 8.x uses half of system RAM as heap; on a small VPS that leaves too little
+# for dpkg to safely extract the large Zammad package (~2 GB of files).
+mkdir -p /etc/elasticsearch/jvm.options.d
+printf -- '-Xms512m\n-Xmx512m\n' > /etc/elasticsearch/jvm.options.d/yunohost.options
+
 # Install Elasticsearch before Zammad so Zammad's package finds the dependency
 # already satisfied and skips its own Elasticsearch setup steps.
 DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends elasticsearch 2>&1
@@ -78,6 +84,33 @@ touch /etc/nginx/conf.d/zammad.conf
 DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends zammad 2>&1
 
 #=================================================
+# STOP POSTINST-STARTED SERVICES & CLEAN STATE
+#=================================================
+# The Zammad postinst automatically starts services the moment the package is
+# installed — BEFORE our nginx config, settings, and DB are fully ready.
+# Those premature service starts can also poison the bootsnap cache
+# (Ruby's require cache) with "file not found" entries, causing subsequent
+# starts to fail with Bundler::GemRequireError even though the file is on disk.
+# Fix: stop all Zammad services, wipe the bootsnap cache, reset failed units,
+# then start everything fresh after the rest of the install is complete.
+
+ynh_script_progression "Resetting Zammad service state after installation..."
+
+systemctl stop zammad 2>/dev/null || true
+# Also stop any scaled instances (zammad-web-1, zammad-worker-1, etc.)
+for svc in $(systemctl list-units 'zammad-*.service' --no-legend 2>/dev/null | awk '{print $1}'); do
+    systemctl stop "$svc" 2>/dev/null || true
+done
+
+# Wipe bootsnap cache — stale "not found" entries survive service restarts
+rm -rf /opt/zammad/tmp/cache/
+
+# Reset failed state so units can be started again
+for svc in $(systemctl list-units 'zammad*.service' --all --no-legend 2>/dev/null | awk '{print $1}'); do
+    systemctl reset-failed "$svc" 2>/dev/null || true
+done
+
+#=================================================
 # DISABLE ZAMMAD'S OWN NGINX CONFIG
 #=================================================
 ynh_script_progression "Configuring NGINX..."
@@ -101,6 +134,11 @@ ynh_config_add_nginx
 # DB migrations. Just enable and wait for the HTTP port.
 
 systemctl enable zammad --quiet 2>/dev/null || true
+
+# Start Zammad cleanly — we stopped it above to prevent the bootsnap cache
+# from being poisoned by premature service starts inside the postinst.
+# DB migrations and seed run on this first start; that takes several minutes.
+systemctl start zammad
 
 # zammad.service and zammad-web.service are placeholders (sleep infinity).
 # The real Puma web server runs as zammad-web-1.service (scaled instance).
