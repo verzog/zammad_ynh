@@ -49,7 +49,7 @@ systemctl enable elasticsearch --quiet
 systemctl start elasticsearch
 
 ynh_script_progression "Waiting for Elasticsearch to be ready..."
-es_timeout=120
+es_timeout=300
 es_elapsed=0
 until curl -sf "http://localhost:9200" > /dev/null 2>&1; do
     sleep 5
