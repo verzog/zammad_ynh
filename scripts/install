@@ -82,35 +82,30 @@ ynh_config_add_nginx
 #=================================================
 # WAIT FOR ZAMMAD TO BE READY
 #=================================================
-ynh_script_progression "Waiting for Zammad services to become available..."
+# The zammad package postinst already started the services. Do NOT restart them —
+# the first start runs DB migrations which take 3-5 minutes and restarting
+# mid-migration will cause a loop. Just enable them and wait.
 
-# Ensure all Zammad services are running
 for svc in zammad zammad-web zammad-worker zammad-websocket; do
-    if systemctl list-units --full --all | grep -q "${svc}.service"; then
-        systemctl enable "$svc" --quiet 2>/dev/null || true
-        systemctl restart "$svc" 2>/dev/null || true
-    fi
+    systemctl enable "$svc" --quiet 2>/dev/null || true
 done
 
-# Wait for zammad-web to reach 'active (running)' state first (DB migrations run here)
-ynh_script_progression "Waiting for Zammad web server on port $port (first start runs DB migrations, may take 3-5 minutes)..."
-timeout=360
-elapsed=0
-until systemctl is-active --quiet zammad-web 2>/dev/null; do
-    sleep 5
-    elapsed=$((elapsed + 5))
-    if [ "$elapsed" -ge "$timeout" ]; then
-        ynh_die "zammad-web service did not become active within ${timeout}s. Check: journalctl -u zammad-web -n 50"
-    fi
-done
+ynh_script_progression "Waiting for Zammad web server on port $port (first start runs DB migrations — allow up to 10 minutes)..."
 
-# Then wait for the HTTP port to actually respond
+timeout=600
 elapsed=0
 while ! curl -sf -o /dev/null "http://127.0.0.1:$port/"; do
-    sleep 5
-    elapsed=$((elapsed + 5))
+    sleep 10
+    elapsed=$((elapsed + 10))
+    # Log progress every minute
+    if [ $((elapsed % 60)) -eq 0 ]; then
+        ynh_print_info "Still waiting for Zammad... ${elapsed}s elapsed. Service status: $(systemctl is-active zammad-web 2>/dev/null || echo unknown)"
+    fi
     if [ "$elapsed" -ge "$timeout" ]; then
-        ynh_die "Zammad web port $port did not respond within ${timeout}s. Check: journalctl -u zammad-web -n 50"
+        ynh_print_warn "Zammad did not respond after ${timeout}s."
+        ynh_print_warn "Check logs: journalctl -u zammad-web -n 100 --no-pager"
+        ynh_print_warn "Check app log: tail -50 /var/log/zammad/production.log"
+        ynh_die "Zammad web server failed to start."
     fi
 done
 
