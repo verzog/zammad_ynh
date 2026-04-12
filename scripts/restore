@@ -9,16 +9,17 @@ source /usr/share/yunohost/helpers
 ynh_script_progression "Reinstalling Zammad..."
 
 # Re-add the repo and install (same steps as install script)
-debian_version=$(lsb_release -sc)
+debian_version=$(lsb_release -sr | cut -d. -f1)
 
 ynh_apt_install_dependencies curl apt-transport-https gnupg libimlib2
 
-curl -fsSL "https://dl.packager.io/srv/deb/zammad/zammad/key" \
+mkdir -p /etc/apt/keyrings
+curl -fsSL "https://dl.packager.io/srv/zammad/zammad/key" \
     | gpg --dearmor \
-    | tee /usr/share/keyrings/zammad.gpg > /dev/null
-chmod 644 /usr/share/keyrings/zammad.gpg
+    | tee /etc/apt/keyrings/pkgr-zammad.gpg > /dev/null
+chmod 644 /etc/apt/keyrings/pkgr-zammad.gpg
 
-echo "deb [signed-by=/usr/share/keyrings/zammad.gpg] https://dl.packager.io/srv/deb/zammad/zammad/stable/debian ${debian_version} main" \
+echo "deb [signed-by=/etc/apt/keyrings/pkgr-zammad.gpg] https://dl.packager.io/srv/deb/zammad/zammad/stable/debian ${debian_version} main" \
     > /etc/apt/sources.list.d/zammad.list
 
 apt-get update -qq

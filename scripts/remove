@@ -29,7 +29,7 @@ apt-get autoremove -y 2>/dev/null || true
 ynh_script_progression "Removing Zammad repository..."
 
 rm -f /etc/apt/sources.list.d/zammad.list
-rm -f /usr/share/keyrings/zammad.gpg
+rm -f /etc/apt/keyrings/pkgr-zammad.gpg
 apt-get update -qq
 
 #=================================================
