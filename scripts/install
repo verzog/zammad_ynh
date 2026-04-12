@@ -90,13 +90,12 @@ ynh_config_add_nginx
 #=================================================
 # WAIT FOR ZAMMAD TO BE READY
 #=================================================
-# The zammad package postinst already started the services. Do NOT restart them —
-# the first start runs DB migrations which take 3-5 minutes and restarting
-# mid-migration will cause a loop. Just enable them and wait.
+# The zammad package postinst already started zammad.service.
+# zammad-web.service is a placeholder (sleep infinity) — the real web
+# server runs under zammad.service. Do NOT restart — first start runs
+# DB migrations. Just enable and wait for the HTTP port.
 
-for svc in zammad zammad-web zammad-worker zammad-websocket; do
-    systemctl enable "$svc" --quiet 2>/dev/null || true
-done
+systemctl enable zammad --quiet 2>/dev/null || true
 
 ynh_script_progression "Waiting for Zammad web server on port $port (first start runs DB migrations — allow up to 10 minutes)..."
 
@@ -105,15 +104,14 @@ elapsed=0
 while ! curl -sf -o /dev/null "http://127.0.0.1:$port/"; do
     sleep 10
     elapsed=$((elapsed + 10))
-    # Log progress every minute
     if [ $((elapsed % 60)) -eq 0 ]; then
-        ynh_print_info "Still waiting for Zammad... ${elapsed}s elapsed. Service status: $(systemctl is-active zammad-web 2>/dev/null || echo unknown)"
+        ynh_print_info "Still waiting for Zammad... ${elapsed}s elapsed. zammad.service: $(systemctl is-active zammad 2>/dev/null || echo unknown)"
+        ynh_print_info "Recent log: $(journalctl -u zammad -n 3 --no-pager 2>/dev/null | tail -1)"
     fi
     if [ "$elapsed" -ge "$timeout" ]; then
-        ynh_print_warn "Zammad did not respond after ${timeout}s."
-        ynh_print_warn "Check logs: journalctl -u zammad-web -n 100 --no-pager"
-        ynh_print_warn "Check app log: tail -50 /var/log/zammad/production.log"
-        ynh_die "Zammad web server failed to start."
+        ynh_print_warn "Check: journalctl -u zammad -n 100 --no-pager"
+        ynh_print_warn "Check: tail -50 /var/log/zammad/production.log"
+        ynh_die "Zammad did not respond on port $port after ${timeout}s."
     fi
 done
 
