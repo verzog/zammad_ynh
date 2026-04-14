@@ -178,12 +178,15 @@ ynh_script_progression "Configuring Zammad application settings..."
 # Set the application URL so Zammad generates correct links
 # Zammad stores this in the database — use the rails runner
 zammad_rails() {
-    # Zammad ships its own Ruby under /opt/zammad/vendor/ruby-X.Y.Z/bin/
-    # 'bundle' is not in the system PATH, so we locate it dynamically.
-    local bundle_bin
-    bundle_bin=$(ls /opt/zammad/vendor/ruby-*/bin/bundle 2>/dev/null | head -1)
-    if [ -z "$bundle_bin" ]; then
-        ynh_die "Cannot find bundle binary under /opt/zammad/vendor/ — is Zammad installed?"
+    # Zammad ships its own Ruby under /opt/zammad/vendor/ruby-X.Y.Z/bin/ruby.
+    # Rather than calling 'bundle exec rails' (which requires 'rails' to be in
+    # PATH after bundler prepends gem bins), we call the vendored ruby directly
+    # with Zammad's own bin/rails binstub.  The binstub loads config/boot.rb
+    # which calls 'require bundler/setup', handling all gem loading internally.
+    local ruby_bin
+    ruby_bin=$(ls /opt/zammad/vendor/ruby-*/bin/ruby 2>/dev/null | head -1)
+    if [ -z "$ruby_bin" ]; then
+        ynh_die "Cannot find ruby binary under /opt/zammad/vendor/ — is Zammad installed?"
     fi
     # Write the Ruby code to a temp file to avoid shell quoting issues with
     # multi-line scripts and embedded single/double quotes.
@@ -192,7 +195,7 @@ zammad_rails() {
     chmod 644 "$tmpfile"
     printf '%s\n' "$1" > "$tmpfile"
     local rc=0
-    sudo -u zammad bash -c "cd /opt/zammad && '${bundle_bin}' exec rails runner '${tmpfile}'" || rc=$?
+    sudo -u zammad bash -c "cd /opt/zammad && '${ruby_bin}' bin/rails runner '${tmpfile}'" || rc=$?
     rm -f "$tmpfile"
     return $rc
 }
