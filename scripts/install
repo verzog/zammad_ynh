@@ -178,10 +178,25 @@ ynh_script_progression "Configuring Zammad application settings..."
 # Set the application URL so Zammad generates correct links
 # Zammad stores this in the database — use the rails runner
 zammad_rails() {
-    sudo -u zammad bash -c "cd /opt/zammad && bundle exec rails runner \"$1\"" 2>/dev/null
+    # Zammad ships its own Ruby under /opt/zammad/vendor/ruby-X.Y.Z/bin/
+    # 'bundle' is not in the system PATH, so we locate it dynamically.
+    local bundle_bin
+    bundle_bin=$(ls /opt/zammad/vendor/ruby-*/bin/bundle 2>/dev/null | head -1)
+    if [ -z "$bundle_bin" ]; then
+        ynh_die "Cannot find bundle binary under /opt/zammad/vendor/ — is Zammad installed?"
+    fi
+    # Write the Ruby code to a temp file to avoid shell quoting issues with
+    # multi-line scripts and embedded single/double quotes.
+    local tmpfile
+    tmpfile=$(mktemp /tmp/zammad_rails_XXXXXX.rb)
+    chmod 644 "$tmpfile"
+    printf '%s\n' "$1" > "$tmpfile"
+    local rc=0
+    sudo -u zammad bash -c "cd /opt/zammad && '${bundle_bin}' exec rails runner '${tmpfile}'" || rc=$?
+    rm -f "$tmpfile"
+    return $rc
 }
 
-domain_url="https://${domain}"
 zammad_rails "Setting.set('http_type', 'https'); Setting.set('fqdn', '${domain}')"
 
 # Set the interface language
@@ -213,18 +228,11 @@ u.save!
 #=================================================
 # LDAP CONFIGURATION
 #=================================================
-ynh_script_progression "Configuring LDAP authentication..."
+ynh_script_progression "Configuring LDAP source..."
 
-ldap_password=$(ynh_app_setting_get --key=ldap_password 2>/dev/null || echo "")
-if [ -z "$ldap_password" ]; then
-    ldap_password=$(ynh_string_random --length=24)
-    ynh_app_setting_set --key=ldap_password --value="$ldap_password"
-fi
-
-# Create a dedicated LDAP bind user in YunoHost
-# (YunoHost LDAP is at ldap://localhost, base dc=yunohost,dc=org)
-ynh_script_progression "Configuring Zammad LDAP source..."
-
+# YunoHost LDAP supports anonymous reads for basic user attributes.
+# We register the source here; admins can add bind credentials via the
+# Zammad web UI (Settings > Integrations > LDAP) if needed.
 zammad_rails "
 src = LdapSource.where(name: 'YunoHost').first_or_initialize
 src.name       = 'YunoHost'
@@ -233,8 +241,6 @@ src.port       = 389
 src.options    = {
   'dc'         => 'dc=yunohost,dc=org',
   'base'       => 'ou=users,dc=yunohost,dc=org',
-  'bind_user'  => 'cn=admin,dc=yunohost,dc=org',
-  'bind_pw'    => '$(yunohost tools adminpw --quiet 2>/dev/null || echo '')',
   'uid'        => 'uid',
   'firstname'  => 'givenName',
   'lastname'   => 'sn',
@@ -242,7 +248,7 @@ src.options    = {
 }
 src.active     = true
 src.save!
-"
+" || ynh_print_warn "LDAP auto-configuration failed — configure manually in Settings > Integrations > LDAP"
 
 #=================================================
 # FAIL2BAN
