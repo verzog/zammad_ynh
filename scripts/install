@@ -223,6 +223,12 @@ u.updated_by_id = 1
 u.save!
 "
 
+# Mark setup wizard as complete — we've already configured everything the wizard
+# would do (admin user, FQDN, http_type, language).  Without this, Zammad 7.0.1+
+# leaves system_init_done=false and the frontend calls /api/v1/getting_started
+# unauthenticated, which the security-hardened endpoint rejects with 403.
+zammad_rails "Setting.set('system_init_done', true)"
+
 #=================================================
 # LDAP CONFIGURATION
 #=================================================
