@@ -58,6 +58,15 @@ ram.runtime = "512M"
     main.url = "/"
     main.auth_header = false
 
+    # API must always be reachable by visitors regardless of main permission
+    # so Zammad's own frontend JS (and API clients) are never blocked by SSOwat.
+    # Zammad enforces its own token/session auth on every API call.
+    api.url = "/api"
+    api.auth_header = false
+    api.allowed = "visitors"
+    api.show_tile = false
+    api.protected = true
+
     [resources.ports]
     main.default = 3000
     websocket.default = 6042
