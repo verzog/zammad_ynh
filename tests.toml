@@ -1,0 +1,13 @@
+#:schema https://raw.githubusercontent.com/YunoHost/apps/main/schemas/tests.v1.schema.json
+
+test_format = 1.0
+
+[default]
+
+    # The manifest has no "path" install question, so Zammad is always installed
+    # at the root of its domain and package_check deduces the standard
+    # install / remove / upgrade / backup-restore tests from the manifest.
+    #
+    # NB: a full install pulls in PostgreSQL, Redis, Ruby/Rails and
+    # Elasticsearch and runs DB migrations on first boot, so these tests need a
+    # generously sized test runner and a long timeout.

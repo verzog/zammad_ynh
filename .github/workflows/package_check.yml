@@ -1,0 +1,91 @@
+# YunoHost package_check in GitHub Actions.
+#
+# package_check runs the real install / remove / upgrade / backup / restore /
+# linter tests inside a YunoHost container — the same tool YunoHost's own CI
+# (ci-apps.yunohost.org) uses.
+#
+# NB: Zammad is a heavy app. A full install pulls in PostgreSQL, Redis,
+# Ruby/Rails and Elasticsearch (~2 GB of files) and runs DB migrations on first
+# boot. On a small GitHub-hosted runner this can be slow or run out of memory;
+# the canonical test path remains YunoHost's own CI once the app is submitted to
+# the catalogue. This workflow is an extra, local-ish safety net.
+
+name: Package check
+
+on:
+  push:
+    branches:
+      - master
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  package_check:
+    name: Install / upgrade / backup / restore (package_check)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    steps:
+      - name: Check out the package
+        uses: actions/checkout@v4.2.2
+        with:
+          path: zammad_ynh
+
+      - name: Install dependencies and Incus
+        run: |
+          set -eux
+          sudo apt-get update
+          # package_check's own deps: lynx, jq, python3, pip3, and its Python
+          # helpers import toml (tests parser) + pycurl & bs4 (URL test).
+          sudo apt-get install -y \
+            lynx jq btrfs-progs python3-pip python3-toml python3-pycurl python3-bs4 incus
+          # Let the runner user drive Incus (picked up below via `sg incus-admin`).
+          sudo usermod -aG incus-admin "$USER"
+
+      - name: Initialise Incus
+        run: |
+          set -eux
+          sudo incus admin init --minimal
+          # GitHub runners ship Docker, whose iptables FORWARD policy is DROP and
+          # blocks the incusbr0 bridge, leaving containers without internet.
+          sudo iptables -P FORWARD ACCEPT || true
+
+      - name: Clone package_check (and adapt it to the runner)
+        run: |
+          set -eux
+          git clone --depth 1 https://github.com/YunoHost/package_check
+          # GitHub-hosted runners block outbound ICMP, so package_check's
+          # ping-based internet check fails spuriously. Fall back to an HTTPS
+          # probe (the app tests themselves are unaffected).
+          sed -i 's#|| log_critical "Unable to connect to internet."#|| curl -sfI https://yunohost.org >/dev/null 2>\&1 || curl -sfI https://framasoft.org >/dev/null 2>\&1 || log_critical "Unable to connect to internet."#' package_check/lib/common.sh
+
+      - name: Build the base YunoHost image
+        run: |
+          set -euo pipefail
+          cd package_check
+          sg incus-admin -c "YNHDEV_BACKEND=incus ./package_check.sh --rebuild"
+
+      - name: Run package_check
+        run: |
+          set -euo pipefail
+          cd package_check
+          # package_check always exits 0, even when tests fail, so capture its
+          # output and fail the job ourselves if any test reported FAIL.
+          sg incus-admin -c "YNHDEV_BACKEND=incus ./package_check.sh ../zammad_ynh" 2>&1 | tee run.log
+          if grep -q -- "--- FAIL ---" run.log; then
+            echo "::error::package_check reported at least one failing test (see log above)."
+            exit 1
+          fi
+          echo "All package_check tests passed."
+
+      - name: Upload the test results
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4.4.3
+        with:
+          name: package-check-results
+          path: |
+            package_check/run.log
+            package_check/full_log_*.log
+            package_check/results_*.json
+          if-no-files-found: ignore

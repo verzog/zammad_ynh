@@ -8,11 +8,11 @@ source /usr/share/yunohost/helpers
 #=================================================
 ynh_script_progression "Adding Zammad repository..."
 
-# Install prerequisites for the repo
-# Using plain apt-get — we do NOT use ynh_apt_install_dependencies here because
-# that helper creates a fake dependency package tied to the system_user resource
-# which we intentionally removed (Zammad's own package manages its user/dirs).
-apt-get install -y --no-install-recommends curl apt-transport-https gnupg libimlib2
+# Prerequisites for adding the Zammad/Elasticsearch apt repositories. These are
+# tracked as the app's dependencies (a '$app-ynh-deps' metapackage) so the core
+# removes them cleanly on app removal. The 'restore' script installs the same
+# set, so both paths stay in sync.
+ynh_apt_install_dependencies curl apt-transport-https gnupg libimlib2
 
 # Detect Debian version number (e.g. 12 for bookworm) — packager.io uses numbers, not codenames
 debian_version=$(lsb_release -sr | cut -d. -f1)
@@ -108,8 +108,17 @@ for svc in $(systemctl list-units 'zammad-*.service' --no-legend 2>/dev/null | a
     systemctl stop "$svc" 2>/dev/null || true
 done
 
-# Wipe bootsnap cache — stale "not found" entries survive service restarts
-rm -rf /opt/zammad/tmp/cache/
+# Wait for the Zammad processes to actually exit before touching the bootsnap
+# cache. A worker still running recreates files mid-delete, which makes the wipe
+# race and fail with ENOTEMPTY — and that non-zero exit would abort the install.
+for _ in $(seq 1 15); do
+    pgrep -u zammad >/dev/null 2>&1 || break
+    sleep 1
+done
+
+# Wipe bootsnap cache — stale "not found" entries survive service restarts.
+# Best-effort: tolerate a lingering concurrent writer rather than aborting.
+rm -rf /opt/zammad/tmp/cache/ 2>/dev/null || true
 
 # Reset failed state so units can be started again
 for svc in $(systemctl list-units 'zammad*.service' --all --no-legend 2>/dev/null | awk '{print $1}'); do
@@ -175,24 +184,9 @@ done
 #=================================================
 ynh_script_progression "Configuring Zammad application settings..."
 
-# Set the application URL so Zammad generates correct links
-# Zammad stores this in the database — use the rails runner
-zammad_rails() {
-    # Use 'zammad run rails runner' — the official Zammad CLI wrapper that sets
-    # up the correct Ruby + Bundler environment (GEM_HOME, BUNDLE_PATH, etc.)
-    # exactly as the running service does.  Calling the vendored ruby directly
-    # bypasses the bundler environment and breaks on git-sourced gems like
-    # delayed_job whose checkout path only exists under the configured BUNDLE_PATH.
-    local tmpfile
-    tmpfile=$(mktemp /tmp/zammad_rails_XXXXXX.rb)
-    chmod 644 "$tmpfile"
-    printf '%s\n' "$1" > "$tmpfile"
-    local rc=0
-    sudo -u zammad bash -c "zammad run rails runner '${tmpfile}'" || rc=$?
-    rm -f "$tmpfile"
-    return $rc
-}
-
+# Set the application URL so Zammad generates correct links. Zammad stores this
+# in the database, so we drive it through the shared zammad_rails helper
+# (defined in _common.sh), which runs the snippet via a private 0600 temp file.
 zammad_rails "Setting.set('http_type', 'https'); Setting.set('fqdn', '${domain}')"
 
 # Set the interface language
@@ -229,32 +223,11 @@ u.save!
 # unauthenticated, which the security-hardened endpoint rejects with 403.
 zammad_rails "Setting.set('system_init_done', true)"
 
-#=================================================
-# LDAP CONFIGURATION
-#=================================================
-ynh_script_progression "Configuring LDAP source..."
-
-# YunoHost LDAP supports anonymous reads for basic user attributes.
-# We register the source here; admins can add bind credentials via the
-# Zammad web UI (Settings > Integrations > LDAP) if needed.
-zammad_rails "
-src = LdapSource.where(name: 'YunoHost').first_or_initialize
-src.name       = 'YunoHost'
-src.host       = 'localhost'
-src.port       = 389
-src.options    = {
-  'dc'         => 'dc=yunohost,dc=org',
-  'base'       => 'ou=users,dc=yunohost,dc=org',
-  'uid'        => 'uid',
-  'firstname'  => 'givenName',
-  'lastname'   => 'sn',
-  'email'      => 'mail',
-}
-src.active     = true
-src.created_by_id = 1
-src.updated_by_id = 1
-src.save!
-" || ynh_print_warn "LDAP auto-configuration failed — configure manually in Settings > Integrations > LDAP"
+# NB: LDAP is intentionally NOT auto-configured here. Zammad's LdapSource
+# requires its full attribute mapping and a sync schedule, which are set up
+# through the admin wizard (Settings > Integrations > LDAP) rather than a
+# one-shot rails snippet. The YunoHost LDAP parameters to enter there are
+# documented in doc/DISCLAIMER.md.
 
 #=================================================
 # FAIL2BAN
@@ -267,6 +240,16 @@ ynh_config_add_fail2ban --logpath="/var/log/zammad/production.log" \
 # LOGROTATE
 #=================================================
 ynh_config_add_logrotate "/var/log/zammad"
+
+#=================================================
+# REGISTER ZAMMAD WITH YUNOHOST
+#=================================================
+# Expose Zammad's umbrella service in the YunoHost webadmin (status + logs).
+ynh_script_progression "Registering the Zammad service with YunoHost..."
+
+yunohost service add zammad \
+    --description="Zammad helpdesk and ticketing system" \
+    --log="/var/log/zammad/production.log"
 
 #=================================================
 # FINISH
