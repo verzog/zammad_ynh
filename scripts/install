@@ -223,32 +223,11 @@ u.save!
 # unauthenticated, which the security-hardened endpoint rejects with 403.
 zammad_rails "Setting.set('system_init_done', true)"
 
-#=================================================
-# LDAP CONFIGURATION
-#=================================================
-ynh_script_progression "Configuring LDAP source..."
-
-# YunoHost LDAP supports anonymous reads for basic user attributes.
-# We register the source here; admins can add bind credentials via the
-# Zammad web UI (Settings > Integrations > LDAP) if needed.
-zammad_rails "
-src = LdapSource.where(name: 'YunoHost').first_or_initialize
-src.name       = 'YunoHost'
-src.host       = 'localhost'
-src.port       = 389
-src.options    = {
-  'dc'         => 'dc=yunohost,dc=org',
-  'base'       => 'ou=users,dc=yunohost,dc=org',
-  'uid'        => 'uid',
-  'firstname'  => 'givenName',
-  'lastname'   => 'sn',
-  'email'      => 'mail',
-}
-src.active     = true
-src.created_by_id = 1
-src.updated_by_id = 1
-src.save!
-" || ynh_print_warn "LDAP auto-configuration failed — configure manually in Settings > Integrations > LDAP"
+# NB: LDAP is intentionally NOT auto-configured here. Zammad's LdapSource
+# requires its full attribute mapping and a sync schedule, which are set up
+# through the admin wizard (Settings > Integrations > LDAP) rather than a
+# one-shot rails snippet. The YunoHost LDAP parameters to enter there are
+# documented in doc/DISCLAIMER.md.
 
 #=================================================
 # FAIL2BAN

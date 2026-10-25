@@ -56,4 +56,12 @@ if ! curl -s -o /dev/null "http://127.0.0.1:$port"; then
     ynh_print_warn "Zammad web server may not be fully up yet. Check: journalctl -u zammad-web"
 fi
 
+#=================================================
+# RE-REGISTER THE SERVICE WITH YUNOHOST
+#=================================================
+# Keep the 'yunohost service add' consistent with install/restore.
+yunohost service add zammad \
+    --description="Zammad helpdesk and ticketing system" \
+    --log="/var/log/zammad/production.log"
+
 ynh_script_progression "Upgrade of Zammad complete!"

@@ -105,7 +105,7 @@ fi
 #=================================================
 ynh_script_progression "Restoring NGINX configuration..."
 
-ynh_restore "/etc/nginx/conf.d/$app.conf"
+ynh_restore "/etc/nginx/conf.d/$domain.d/$app.conf"
 ynh_systemctl --service=nginx --action=reload
 
 #=================================================

@@ -77,12 +77,13 @@ sudo -u postgres dropuser zammad 2>/dev/null || true
 #=================================================
 ynh_script_progression "Removing remaining files..."
 
-# Zammad data and config (purge may not remove these if non-empty)
+# Zammad data and config (purge may not remove these if non-empty).
 ynh_safe_rm "/opt/zammad"
 ynh_safe_rm "/var/lib/zammad"
 ynh_safe_rm "/etc/zammad"
-ynh_safe_rm "/var/log/zammad"
 # Elasticsearch leftover data
 ynh_safe_rm "/var/lib/elasticsearch"
+# NB: /var/log/zammad is intentionally left to the core to remove — deleting
+# logs here risks losing them if an upgrade fails and rolls back to remove.
 
 ynh_script_progression "Zammad has been removed."

@@ -13,7 +13,7 @@ maintainers = ["verzog"]
 license = "AGPL-3.0"
 website = "https://zammad.org"
 demo = "https://zammad.org/demo"
-documentation = "https://docs.zammad.org"
+userdoc = "https://docs.zammad.org"
 code = "https://github.com/zammad/zammad"
 cpe = "cpe:2.3:a:zammad:zammad"
 

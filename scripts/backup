@@ -5,14 +5,15 @@
 source ../settings/scripts/_common.sh
 source /usr/share/yunohost/helpers
 
-ynh_script_progression "Declaring files to backup..."
+ynh_print_info "Declaring files to be backed up..."
 
 ### These are declarations only; the core performs the actual copy afterwards.
 
 #=================================================
 # NGINX AND APP CONFIGURATION
 #=================================================
-ynh_backup "/etc/nginx/conf.d/$app.conf"
+# YunoHost writes the app's vhost under the per-domain directory.
+ynh_backup "/etc/nginx/conf.d/$domain.d/$app.conf"
 ynh_backup "/etc/zammad"
 
 #=================================================
@@ -23,7 +24,7 @@ ynh_backup "/etc/zammad"
 # captures BOTH the database dump and the file-store attachments into one
 # directory, which we then hand to the core to copy into the archive. The
 # matching restore script replays it in scripts/restore.
-ynh_script_progression "Backing up the Zammad database and attachments..."
+ynh_print_info "Backing up the Zammad database and attachments..."
 
 zammad_backup_dir="/tmp/zammad_backup"
 mkdir -p "$zammad_backup_dir"
@@ -52,4 +53,4 @@ ynh_backup "/etc/logrotate.d/$app"
 [ -f "/etc/fail2ban/jail.d/$app.conf" ] && ynh_backup "/etc/fail2ban/jail.d/$app.conf"
 [ -f "/etc/fail2ban/filter.d/$app.conf" ] && ynh_backup "/etc/fail2ban/filter.d/$app.conf"
 
-ynh_script_progression "Backup complete!"
+ynh_print_info "Backup script completed. YunoHost will now copy the declared files to the archive."
