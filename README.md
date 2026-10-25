@@ -24,8 +24,9 @@ This package:
 - serves Zammad through YunoHost's NGINX (including the WebSocket and Action
   Cable endpoints for live ticket updates),
 - **automatically configures LDAP** against YunoHost's directory so users sign
-  in with their YunoHost accounts (users sync as Customers; promote to agent/admin
-  in the LDAP integration page — see [`doc/DISCLAIMER.md`](doc/DISCLAIMER.md)),
+  in with their YunoHost accounts, with YunoHost `admins` mapped to Zammad
+  Admin+Agent and everyone else synced as Customer (see
+  [`doc/DISCLAIMER.md`](doc/DISCLAIMER.md)),
 - adds Fail2ban and logrotate integration, and registers the Zammad service
   with the YunoHost webadmin.
 
