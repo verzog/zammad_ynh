@@ -28,24 +28,31 @@ trigger a rebuild of the search index.
 
 ### LDAP / YunoHost user sync
 
-Zammad can authenticate against YunoHost's LDAP directory so users log in with
-their YunoHost credentials. This is set up through Zammad's own LDAP wizard
-(it needs an attribute mapping and a sync schedule, which a one-shot script
-cannot reliably provide), under **Admin panel → System → Integrations → LDAP**:
+This package **automatically configures** Zammad to authenticate against
+YunoHost's LDAP directory, so users can sign in with their YunoHost accounts.
+Installation enables the `ldap_integration` setting and creates an LDAP source
+named **YunoHost** with these parameters:
 
 | Field       | Value                          |
 |-------------|--------------------------------|
-| Host        | `localhost`                    |
-| Port        | `389` (no SSL)                 |
+| Host / Port | `localhost` : `389` (no SSL)   |
 | Base DN     | `ou=users,dc=yunohost,dc=org`  |
-| Bind user   | *(leave empty — anonymous)*    |
-| UID         | `uid`                          |
-| First name  | `givenName`                    |
-| Last name   | `sn`                           |
-| Email       | `mail`                         |
+| Bind user   | *(empty — anonymous read)*     |
+| User filter | `(objectClass=posixAccount)`   |
+| UID         | `uid` → login                  |
+| First name  | `givenName` → firstname        |
+| Last name   | `sn` → lastname                |
+| Email       | `mail` → email                 |
 
-After saving, run the wizard's sync to import users; subsequent syncs can be
-scheduled from the same page.
+Zammad's `Import::Ldap` backend then syncs users automatically on its schedule
+(the first sync runs within a few minutes of install; no manual trigger needed).
+
+**Roles:** synced users receive Zammad's default signup role (**Customer**). To
+make selected YunoHost users agents or admins, add a group→role mapping (or set
+individual roles) under **Admin panel → System → Integrations → LDAP**.
+
+**If your YunoHost LDAP does not allow anonymous reads**, edit the same page and
+supply a bind DN and password; everything else is already filled in.
 
 ### Admin credentials
 
