@@ -57,6 +57,16 @@ if ! curl -s -o /dev/null "http://127.0.0.1:$port"; then
 fi
 
 #=================================================
+# LDAP CONFIGURATION (create or migrate)
+#=================================================
+# Re-apply the LDAP integration so installations predating a given LDAP change
+# (e.g. the admins->role mapping and the root base DN) pick it up on upgrade.
+# zammad_configure_ldap is idempotent and preserves admin customisations.
+ynh_script_progression "Updating LDAP integration..."
+
+zammad_configure_ldap
+
+#=================================================
 # RE-REGISTER THE SERVICE WITH YUNOHOST
 #=================================================
 # Keep the 'yunohost service add' consistent with install/restore.

@@ -33,26 +33,32 @@ YunoHost's LDAP directory, so users can sign in with their YunoHost accounts.
 Installation enables the `ldap_integration` setting and creates an LDAP source
 named **YunoHost** with these parameters:
 
-| Field       | Value                          |
-|-------------|--------------------------------|
-| Host / Port | `localhost` : `389` (no SSL)   |
-| Base DN     | `ou=users,dc=yunohost,dc=org`  |
-| Bind user   | *(empty — anonymous read)*     |
-| User filter | `(objectClass=posixAccount)`   |
-| UID         | `uid` → login                  |
-| First name  | `givenName` → firstname        |
-| Last name   | `sn` → lastname                |
-| Email       | `mail` → email                 |
+| Field       | Value                                              |
+|-------------|----------------------------------------------------|
+| Host / Port | `localhost` : `389` (no SSL)                       |
+| Base DN     | `dc=yunohost,dc=org` (root — so groups are found)   |
+| Bind user   | *(empty — anonymous read)*                         |
+| User filter | `(&(objectClass=posixAccount)(!(uid=root))(!(uid=nobody)))` |
+| Group filter| `(objectClass=groupOfNamesYnh)`                    |
+| UID         | `uid` → login                                      |
+| First name  | `givenName` → firstname                            |
+| Last name   | `sn` → lastname                                    |
+| Email       | `mail` → email                                     |
 
 Zammad's `Import::Ldap` backend then syncs users automatically on its schedule
 (the first sync runs within a few minutes of install; no manual trigger needed).
 
-**Roles:** synced users receive Zammad's default signup role (**Customer**). To
-make selected YunoHost users agents or admins, add a group→role mapping (or set
-individual roles) under **Admin panel → System → Integrations → LDAP**.
+**Roles (automatic):** members of the YunoHost **`admins`** group
+(`cn=admins,ou=groups,dc=yunohost,dc=org`) are synced as Zammad **Admin + Agent**;
+all other users get the default signup role (**Customer**). To map additional
+YunoHost groups to Zammad roles, or to override an individual user, use
+**Admin panel → System → Integrations → LDAP**.
 
-**If your YunoHost LDAP does not allow anonymous reads**, edit the same page and
-supply a bind DN and password; everything else is already filled in.
+**If your YunoHost LDAP does not allow anonymous reads** (of the users and/or
+groups subtree), edit the same page and supply a bind DN and password;
+everything else is already filled in. If anonymous reads of `ou=groups` are
+blocked specifically, user sync still works but the admins→role mapping will
+not take effect until a bind user is set.
 
 ### Admin credentials
 
