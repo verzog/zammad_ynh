@@ -229,64 +229,10 @@ zammad_rails "Setting.set('system_init_done', true)"
 ynh_script_progression "Configuring LDAP integration with YunoHost..."
 
 # Wire Zammad to YunoHost's LDAP directory so users sign in with their YunoHost
-# accounts. Configuration lives in an LdapSource row (everything goes in the
-# serialized 'preferences' store — top-level setters like 'host=' do NOT exist),
-# and the feature is gated by the 'ldap_integration' setting. Once both are in
-# place, Zammad's Import::Ldap backend (listed in the 'import_backends' setting)
-# syncs users automatically on its schedule. Keys/shape verified against
-# upstream: spec/factories/ldap_source.rb and db/seeds/settings.rb.
-#
-# Anonymous bind is used (bind_user/bind_pw empty): YunoHost's slapd allows
-# anonymous reads. base_dn is the tree ROOT (dc=yunohost,dc=org), not just
-# ou=users, because Zammad searches groups under the same base_dn and YunoHost
-# keeps groups in the sibling subtree ou=groups. The user filter therefore
-# excludes the 'root'/'nobody' system entries that live under ou=users.
-#
-# Group -> role mapping: members of the YunoHost 'admins' group
-# (cn=admins,ou=groups,dc=yunohost,dc=org, objectClass groupOfNamesYnh, members
-# listed as DNs in the 'member' attribute — which Zammad's Ldap::Group reads)
-# become Zammad Admin + Agent; everyone else gets the default signup role
-# (Customer). Role IDs are looked up by name so this is robust against
-# non-default IDs. Zammad matches the map key against the lowercased group DN
-# and runs role.to_i on each value. Verified against upstream lib/ldap/group.rb
-# and spec/factories/ldap_source.rb; YunoHost group schema from src/user.py.
-#
-# Output is captured to a log so that, if the directory is unreachable at
-# install time, the background sync's diagnostics don't abort the install.
-zammad_rails "
-Setting.set('ldap_integration', true)
-admins_group = 'cn=admins,ou=groups,dc=yunohost,dc=org'
-admin_role_ids = Role.where(name: ['Admin', 'Agent']).order(:id).pluck(:id).map(&:to_s)
-source = LdapSource.find_or_initialize_by(name: 'YunoHost')
-source.preferences = {
-  'host'             => 'localhost',
-  'port'             => 389,
-  'ssl'              => 'off',
-  'ssl_verify'       => false,
-  'options'          => { 'dc=yunohost,dc=org' => 'dc=yunohost,dc=org' },
-  'option'           => 'dc=yunohost,dc=org',
-  'base_dn'          => 'dc=yunohost,dc=org',
-  'bind_user'        => '',
-  'bind_pw'          => '',
-  'user_uid'         => 'uid',
-  'user_filter'      => '(&(objectClass=posixAccount)(!(uid=root))(!(uid=nobody)))',
-  'group_uid'        => 'dn',
-  'group_filter'     => '(objectClass=groupOfNamesYnh)',
-  'user_attributes'  => {
-    'uid'       => 'login',
-    'mail'      => 'email',
-    'givenname' => 'firstname',
-    'sn'        => 'lastname',
-  },
-  'group_role_map'   => { admins_group => admin_role_ids },
-  'unassigned_users' => 'sigup_roles'
-}
-source.active = true
-source.created_by_id = 1
-source.updated_by_id = 1
-source.save!
-" > /var/log/$app/ldap-setup.log 2>&1 \
-    || ynh_print_warn "LDAP auto-configuration did not complete — review /var/log/$app/ldap-setup.log and finish setup in Settings > System > Integrations > LDAP."
+# accounts, with the YunoHost 'admins' group mapped to Zammad Admin + Agent.
+# The actual configuration (and its documented, verified rationale) lives in
+# zammad_configure_ldap() in _common.sh so install and upgrade stay in sync.
+zammad_configure_ldap
 
 #=================================================
 # FAIL2BAN
