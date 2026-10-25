@@ -1,0 +1,32 @@
+#!/bin/bash
+
+source _common.sh
+source /usr/share/yunohost/helpers
+
+### New location is available via $domain and $path; old values via
+### $old_domain and $old_path. Zammad is installed at the root of its domain
+### (no path question), so a URL change is in practice a domain change.
+
+#=================================================
+# MODIFY URL IN NGINX CONF
+#=================================================
+ynh_script_progression "Updating NGINX web server configuration..."
+
+ynh_config_change_url_nginx
+
+#=================================================
+# UPDATE ZAMMAD'S STORED BASE URL
+#=================================================
+# Zammad keeps its FQDN in the database (used for generated links and outgoing
+# email). Update it so those follow the new domain. The app keeps serving on
+# localhost regardless, so a failure here is not fatal to the URL change.
+ynh_script_progression "Updating Zammad's base URL..."
+
+zammad_rails "Setting.set('fqdn', '${domain}'); Setting.set('http_type', 'https')" \
+    || ynh_print_warn "Could not update Zammad's stored FQDN — set it in Settings > System > Base URL."
+
+#=================================================
+# END OF SCRIPT
+#=================================================
+
+ynh_script_progression "Change of URL completed for $app"
