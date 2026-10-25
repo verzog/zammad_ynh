@@ -108,8 +108,17 @@ for svc in $(systemctl list-units 'zammad-*.service' --no-legend 2>/dev/null | a
     systemctl stop "$svc" 2>/dev/null || true
 done
 
-# Wipe bootsnap cache — stale "not found" entries survive service restarts
-rm -rf /opt/zammad/tmp/cache/
+# Wait for the Zammad processes to actually exit before touching the bootsnap
+# cache. A worker still running recreates files mid-delete, which makes the wipe
+# race and fail with ENOTEMPTY — and that non-zero exit would abort the install.
+for _ in $(seq 1 15); do
+    pgrep -u zammad >/dev/null 2>&1 || break
+    sleep 1
+done
+
+# Wipe bootsnap cache — stale "not found" entries survive service restarts.
+# Best-effort: tolerate a lingering concurrent writer rather than aborting.
+rm -rf /opt/zammad/tmp/cache/ 2>/dev/null || true
 
 # Reset failed state so units can be started again
 for svc in $(systemctl list-units 'zammad*.service' --all --no-legend 2>/dev/null | awk '{print $1}'); do
