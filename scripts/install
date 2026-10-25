@@ -8,11 +8,11 @@ source /usr/share/yunohost/helpers
 #=================================================
 ynh_script_progression "Adding Zammad repository..."
 
-# Install prerequisites for the repo
-# Using plain apt-get — we do NOT use ynh_apt_install_dependencies here because
-# that helper creates a fake dependency package tied to the system_user resource
-# which we intentionally removed (Zammad's own package manages its user/dirs).
-apt-get install -y --no-install-recommends curl apt-transport-https gnupg libimlib2
+# Prerequisites for adding the Zammad/Elasticsearch apt repositories. These are
+# tracked as the app's dependencies (a '$app-ynh-deps' metapackage) so the core
+# removes them cleanly on app removal. The 'restore' script installs the same
+# set, so both paths stay in sync.
+ynh_apt_install_dependencies curl apt-transport-https gnupg libimlib2
 
 # Detect Debian version number (e.g. 12 for bookworm) — packager.io uses numbers, not codenames
 debian_version=$(lsb_release -sr | cut -d. -f1)
@@ -175,24 +175,9 @@ done
 #=================================================
 ynh_script_progression "Configuring Zammad application settings..."
 
-# Set the application URL so Zammad generates correct links
-# Zammad stores this in the database — use the rails runner
-zammad_rails() {
-    # Use 'zammad run rails runner' — the official Zammad CLI wrapper that sets
-    # up the correct Ruby + Bundler environment (GEM_HOME, BUNDLE_PATH, etc.)
-    # exactly as the running service does.  Calling the vendored ruby directly
-    # bypasses the bundler environment and breaks on git-sourced gems like
-    # delayed_job whose checkout path only exists under the configured BUNDLE_PATH.
-    local tmpfile
-    tmpfile=$(mktemp /tmp/zammad_rails_XXXXXX.rb)
-    chmod 644 "$tmpfile"
-    printf '%s\n' "$1" > "$tmpfile"
-    local rc=0
-    sudo -u zammad bash -c "zammad run rails runner '${tmpfile}'" || rc=$?
-    rm -f "$tmpfile"
-    return $rc
-}
-
+# Set the application URL so Zammad generates correct links. Zammad stores this
+# in the database, so we drive it through the shared zammad_rails helper
+# (defined in _common.sh), which runs the snippet via a private 0600 temp file.
 zammad_rails "Setting.set('http_type', 'https'); Setting.set('fqdn', '${domain}')"
 
 # Set the interface language
@@ -267,6 +252,16 @@ ynh_config_add_fail2ban --logpath="/var/log/zammad/production.log" \
 # LOGROTATE
 #=================================================
 ynh_config_add_logrotate "/var/log/zammad"
+
+#=================================================
+# REGISTER ZAMMAD WITH YUNOHOST
+#=================================================
+# Expose Zammad's umbrella service in the YunoHost webadmin (status + logs).
+ynh_script_progression "Registering the Zammad service with YunoHost..."
+
+yunohost service add zammad \
+    --description="Zammad helpdesk and ticketing system" \
+    --log="/var/log/zammad/production.log"
 
 #=================================================
 # FINISH

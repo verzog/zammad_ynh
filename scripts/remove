@@ -4,6 +4,14 @@ source _common.sh
 source /usr/share/yunohost/helpers
 
 #=================================================
+# UNREGISTER THE SERVICE FROM YUNOHOST
+#=================================================
+if yunohost service status zammad >/dev/null 2>&1; then
+    ynh_script_progression "Unregistering the Zammad service from YunoHost..."
+    yunohost service remove zammad
+fi
+
+#=================================================
 # STOP SERVICES
 #=================================================
 ynh_script_progression "Stopping Zammad services..."
@@ -21,7 +29,10 @@ done
 ynh_script_progression "Removing Zammad and Elasticsearch packages..."
 
 DEBIAN_FRONTEND=noninteractive apt-get purge -y zammad elasticsearch 2>&1 || true
-apt-get autoremove -y 2>/dev/null || true
+# NB: we deliberately do NOT run a blanket `apt-get autoremove` here — it can
+# pull out packages that other YunoHost apps still depend on. The repo-adding
+# prerequisites (curl, gnupg, ...) were tracked via ynh_apt_install_dependencies
+# and are cleaned up by the core when it removes the '$app-ynh-deps' metapackage.
 
 #=================================================
 # REMOVE APT REPOSITORY

@@ -5,9 +5,9 @@ name = "Zammad"
 description.en = "Customer support and helpdesk ticketing system"
 description.fr = "Système de support client et gestion de tickets"
 
-version = "7.0.1~ynh1"
+version = "7.2.2~ynh1"
 
-maintainers = []
+maintainers = ["verzog"]
 
 [upstream]
 license = "AGPL-3.0"
@@ -18,15 +18,19 @@ code = "https://github.com/zammad/zammad"
 cpe = "cpe:2.3:a:zammad:zammad"
 
 [integration]
-yunohost = ">= 11.2"
+# helpers_version 2.1 is only available from YunoHost 11.2.29 onward (and is the
+# default on YunoHost 12), so the minimum must match.
+yunohost = ">= 11.2.29"
 helpers_version = "2.1"
 architectures = ["amd64"]
 multi_instance = false
 ldap = true
 sso = false
-disk = "3G"
-ram.build = "1024M"
-ram.runtime = "512M"
+# Zammad pulls in PostgreSQL, Redis, Ruby/Rails and Elasticsearch; the on-disk
+# footprint and memory needs are substantial (see doc/DISCLAIMER.md).
+disk = "5G"
+ram.build = "2048M"
+ram.runtime = "1024M"
 
 [install]
 

@@ -16,19 +16,15 @@ Zammad installs via its official Debian package, which pulls in PostgreSQL, Redi
 
 Zammad works best when installed at the **root of a dedicated domain** (e.g., `support.example.com/`), not in a subdirectory. Installing at a subpath may cause issues with asset loading and redirects.
 
-### Elasticsearch (optional but recommended)
+### Elasticsearch
 
-By default Zammad uses PostgreSQL full-text search, which is functional but slow on large ticket volumes. For production use, install Elasticsearch separately and configure it in Zammad's admin panel under **Settings → Integrations → Elasticsearch**.
+This package **installs and starts Elasticsearch 8.x automatically** during
+installation (its JVM heap is capped at 512 MB to suit a typical VPS), because
+the Zammad Debian package depends on it. You do not need to install it yourself.
 
-```bash
-# Quick Elasticsearch setup (run as root after Zammad install)
-curl -fsSL https://artifacts.elastic.co/GPG-KEY-elasticsearch | gpg --dearmor > /usr/share/keyrings/elasticsearch.gpg
-echo "deb [signed-by=/usr/share/keyrings/elasticsearch.gpg] https://artifacts.elastic.co/packages/8.x/apt stable main" > /etc/apt/sources.list.d/elasticsearch.list
-apt-get update && apt-get install -y elasticsearch
-systemctl enable --now elasticsearch
-```
-
-Then in Zammad admin panel: **Settings → Integrations → Elasticsearch → URL: http://localhost:9200**
+If search is not returning results, point Zammad at it in the admin panel under
+**Settings → Integrations → Elasticsearch → URL: `http://localhost:9200`** and
+trigger a rebuild of the search index.
 
 ### LDAP / YunoHost user sync
 
