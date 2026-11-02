@@ -84,6 +84,16 @@ source.active         = true
 source.created_by_id ||= 1
 source.updated_by_id   = 1
 source.save!
+
+# Trigger the first import immediately. Creating the LdapSource row and enabling
+# ldap_integration does NOT sync anyone — Zammad only imports when something runs
+# ImportJob.start_registered (normally its scheduler). Without this kick, no user
+# is imported after install and nobody can sign in via LDAP. Clear any stuck,
+# unfinished job first so queue_registered is not blocked, then run inline.
+# ImportJob#start traps errors into the job result, so a transient LDAP failure
+# here never raises and never aborts install/upgrade.
+ImportJob.where(name: 'Import::Ldap', dry_run: false, finished_at: nil).delete_all
+ImportJob.start_registered
 " > "/var/log/$app/ldap-setup.log" 2>&1 \
         || ynh_print_warn "LDAP configuration did not complete — review /var/log/$app/ldap-setup.log and finish setup in Settings > System > Integrations > LDAP."
 }
