@@ -45,8 +45,13 @@ named **YunoHost** with these parameters:
 | Last name   | `sn` → lastname                                    |
 | Email       | `mail` → email                                     |
 
-Zammad's `Import::Ldap` backend then syncs users automatically on its schedule
-(the first sync runs within a few minutes of install; no manual trigger needed).
+The **first import runs during install/upgrade** (users appear immediately);
+afterwards Zammad re-syncs on its own scheduler. If a later change in YunoHost
+(new user, group membership) hasn't shown up yet, you can force a sync:
+
+```bash
+sudo -u zammad bash -c "cd /opt/zammad && zammad run rails runner 'ImportJob.start_registered'"
+```
 
 **Roles (automatic):** members of the YunoHost **`admins`** group
 (`cn=admins,ou=groups,dc=yunohost,dc=org`) are synced as Zammad **Admin + Agent**;
